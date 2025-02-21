@@ -18,7 +18,7 @@ app.post('/api/chat', async (req, res) => {
   const { messages } = req.body;
   try {
     const stream = await openai.chat.completions.create({
-      model: 'deepseek-chat',
+      model: 'deepseek-reasoner', // deepseek-chat
       messages,
       stream: true,
     });

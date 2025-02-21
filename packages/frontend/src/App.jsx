@@ -12,42 +12,54 @@ function App() {
     setInput('');
     setIsLoading(true);
 
-    const eventSource = new EventSource('/api/chat');
-    let assistantMessage = { role: 'assistant', content: '' };
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: [...messages, userMessage] }),
+      });
 
-    eventSource.onmessage = (event) => {
-      if (event.data === '[DONE]') {
-        eventSource.close();
-        setIsLoading(false);
-        return;
-      }
-      const data = JSON.parse(event.data);
-      const delta = data.choices[0].delta.content;
-      if (delta) {
-        assistantMessage.content += delta;
-        setMessages((prev) => {
-          const updated = [...prev];
-          if (updated[updated.length - 1].role === 'assistant') {
-            updated[updated.length - 1] = assistantMessage;
-          } else {
-            updated.push(assistantMessage);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let assistantMessage = { role: 'assistant', content: '' };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          setIsLoading(false);
+          break;
+        }
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (data === '[DONE]') {
+              setIsLoading(false);
+              break;
+            }
+            const parsed = JSON.parse(data);
+            const delta = parsed.choices[0].delta.content;
+            if (delta) {
+              assistantMessage.content += delta;
+              setMessages((prev) => {
+                const updated = [...prev];
+                if (updated[updated.length - 1].role === 'assistant') {
+                  updated[updated.length - 1] = assistantMessage;
+                } else {
+                  updated.push(assistantMessage);
+                }
+                return updated;
+              });
+            }
           }
-          return updated;
-        });
+        }
       }
-    };
-
-    eventSource.onerror = () => {
-      eventSource.close();
+    } catch (error) {
+      console.error('Error:', error);
       setIsLoading(false);
-    };
-
-    // 发送请求到后端
-    fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: [...messages, userMessage] }),
-    });
+    }
   };
 
   return (
